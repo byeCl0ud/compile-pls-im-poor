@@ -37,16 +37,16 @@ jobs:
         uses: actions/checkout@v4
         with:
           submodules: recursive
-      - name: Setup dotnet
+      - name: Setup dotnet through symlink, this is terrible but it works and it was a first thing I got on my mind
         run: sudo mkdir -p /usr/local/share/dotnet && sudo ln -s /Users/runner/.dotnet/dotnet /usr/local/share/dotnet/dotnet
       - name: Archive 1st time and fail, that is expected dw
         run: cd src/MeloNX/ && xcodebuild archive -archivePath "../../MeloNX_archive" -scheme "MeloNX" -target "MeloNX" -sdk iphoneos -arch arm64 -configuration Release CODE_SIGN_IDENTITY="" CODE_SIGNING_REQUIRED=NO CODE_SIGNING_ALLOWED=NO | xcpretty && cd ../../ && exit ${PIPESTATUS[0]}
 
-      - name: Configure the project
+      - name: Configure the project through the ruby script (vibe coded by chatgpt, sorry again)
         run: gem install xcodeproj && ruby embed_sign_dylib.rb
       - name: Archive 2nd time and hopefully pass this time
         run: cd src/MeloNX/ && xcodebuild archive -archivePath "../../MeloNX_archive" -scheme "MeloNX" -target "MeloNX" -sdk iphoneos -arch arm64 -configuration Release CODE_SIGN_IDENTITY="" CODE_SIGNING_REQUIRED=NO CODE_SIGNING_ALLOWED=NO | xcpretty && exit ${PIPESTATUS[0]}
-      - name: List created file and directory
+      - name: List created file and directory (debug)
         run: pwd && ls
       - name: Tar Build Artifact
         run: tar -cvf "MeloNX_archive.xcarchive.tar" "MeloNX_archive.xcarchive"

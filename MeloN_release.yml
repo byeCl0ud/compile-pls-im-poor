@@ -74,7 +74,7 @@ jobs:
         with:
           name: MeloNX_archive.xcarchive.tar
       - name: Extract Build Artifact
-        run: cd /home/runner/work/MeloNX-cloned/MeloNX-cloned && tar -xf "MeloNX_archive.xcarchive.tar"
+        run: cd /home/runner/work/MeloN/MeloN && tar -xf "MeloNX_archive.xcarchive.tar"
       - name: Install ldid
         run: |
           if [ `uname -s` = "Linux" ]; then

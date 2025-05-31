@@ -1,0 +1,100 @@
+name: Melonx_release
+
+# Controls when the workflow will run
+on:
+  # Triggers the workflow on push or pull request events but only for the "main" branch
+  push:
+    branches: [ "main" ]
+  pull_request:
+    branches: [ "main" ]
+
+  # Allows you to run this workflow manually from the Actions tab
+  workflow_dispatch:
+    inputs: 
+      release__nightly:
+        description: Create a release
+        type: boolean
+        required: false  
+
+jobs:
+  build:
+    name: Build using xcodebuild command
+    runs-on: macos-latest
+    env:
+      scheme: MeloNX
+      archive_path: archive
+    outputs:
+      scheme: ${{ steps.scheme.outputs.scheme }}
+      archive_path: ${{ env.archive_path }}
+    steps: 
+      - uses: maxim-lobanov/setup-xcode@v1
+        with:
+          xcode-version: '16.2'
+      - uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: '8.0.409'
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          submodules: recursive
+      - name: Setup dotnet
+        run: sudo mkdir -p /usr/local/share/dotnet && sudo ln -s /Users/runner/.dotnet/dotnet /usr/local/share/dotnet/dotnet
+      - name: Archive 1st time and fail, that is expected dw
+        run: cd src/MeloNX/ && xcodebuild archive -archivePath "../../MeloNX_archive" -scheme "MeloNX" -target "MeloNX" -sdk iphoneos -arch arm64 -configuration Release CODE_SIGN_IDENTITY="" CODE_SIGNING_REQUIRED=NO CODE_SIGNING_ALLOWED=NO | xcpretty && cd ../../ && exit ${PIPESTATUS[0]}
+
+      - name: Configure the project
+        run: gem install xcodeproj && ruby embed_sign_dylib.rb
+      - name: Archive 2nd time and hopefully pass this time
+        run: cd src/MeloNX/ && xcodebuild archive -archivePath "../../MeloNX_archive" -scheme "MeloNX" -target "MeloNX" -sdk iphoneos -arch arm64 -configuration Release CODE_SIGN_IDENTITY="" CODE_SIGNING_REQUIRED=NO CODE_SIGNING_ALLOWED=NO | xcpretty && exit ${PIPESTATUS[0]}
+      - name: List created file and directory
+        run: pwd && ls
+      - name: Tar Build Artifact
+        run: tar -cvf "MeloNX_archive.xcarchive.tar" "MeloNX_archive.xcarchive"
+      - name: Upload a Build Artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: MeloNX_archive.xcarchive.tar
+          path: MeloNX_archive.xcarchive.tar
+          
+  package:
+    name: Create fake-signed ipa package
+    runs-on: ubuntu-latest
+    needs: [build]
+    env:
+      scheme: MeloNX
+      archive_path: MeloNX_archive.xcarchive.tar
+    outputs:
+      artifact: MeloNX_beta.ipa
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+      - name: Download a Build Artifact
+        uses: actions/download-artifact@v4
+        with:
+          name: MeloNX_archive.xcarchive.tar
+      - name: Extract Build Artifact
+        run: cd /home/runner/work/MeloNX-cloned/MeloNX-cloned && tar -xf "MeloNX_archive.xcarchive.tar"
+      - name: Install ldid
+        run: |
+          if [ `uname -s` = "Linux" ]; then
+            curl -sSL -o /usr/local/bin/ldid "${{ github.server_url }}/ProcursusTeam/ldid/releases/latest/download/ldid_linux_`uname -m`"
+            chmod +x /usr/local/bin/ldid
+          elif [ `uname -s` = "Darwin" ]; then
+            brew install ldid
+          else
+            exit 1
+          fi
+      - name: Fakesign
+        run: |
+          find "MeloNX_archive.xcarchive/Products/Applications/MeloNX.app" -type d -path '*/Frameworks/*.framework' -exec ldid -SMeloNX-hv.entitlements \{\} \;
+          ldid -SMeloNX-hv.entitlements "MeloNX_archive.xcarchive/Products/Applications/$scheme.app"
+      - name: Create IPA
+        run: |
+          mv "MeloNX_archive.xcarchive/Products/Applications" Payload
+          zip -r "MeloNX.ipa" "Payload" -x "._*" -x ".DS_Store" -x "__MACOSX"
+      - name: Upload a Build Artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: MeloNX_beta.ipa
+          path: MeloNX.ipa        
